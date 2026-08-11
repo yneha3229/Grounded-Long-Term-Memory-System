@@ -7,7 +7,15 @@ A system that turns scattered GitHub issue discussions into a grounded long-term
 **Stack:** Python, SQLite, NetworkX, PyVis, Pydantic, RapidFuzz
 
 ---
+## Why I Built This
 
+LLM agents and chat systems forget everything between sessions, and most "memory"
+solutions just dump raw text into a vector store — with no way to trace where a
+fact came from, whether it's still true, or whether it contradicts something said
+earlier. I wanted to explore the opposite approach: distill messy, real-world
+discussion threads (500 FastAPI GitHub issues) into a structured memory graph
+where every claim is deduplicated, conflict-checked, and grounded in a verifiable
+source excerpt.
 ## Project Stats
 
 | Metric | Value |
@@ -29,7 +37,7 @@ A system that turns scattered GitHub issue discussions into a grounded long-term
 
 ### 1. Clone and install
 ```bash
-git clone https://github.com/yneha3229/layer10-memory.git
+git clone https://github.com/yneha3229/Grounded-Long-Term-Memory-System.git
 cd layer10-memory
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
@@ -98,7 +106,22 @@ visualize.py       → data/visualization/ (interactive HTML graph + evidence pa
 ```
 
 ---
+## Design Decisions
 
+- **Fuzzy matching over embeddings for dedup.** RapidFuzz string similarity is fast,
+  deterministic, and free — no embedding API costs, and merge decisions are
+  explainable (you can see exactly which strings matched and at what score).
+- **Reversible merges with an audit trail.** Every one of the 2,008 merge operations
+  is logged, so a bad merge can be undone without re-running the pipeline. Memory
+  systems that silently collapse entities can't be debugged.
+- **`is_current` validity flags instead of deletion.** When claims conflict or get
+  revised, the old claim is flagged rather than removed — the memory keeps its
+  history, like an append-only log.
+- **Every claim carries a source excerpt.** Retrieval returns the exact text snippet
+  and source ID behind each claim, so answers are grounded and hallucination-checkable.
+- **Pydantic schema validation on LLM output.** Malformed extractions are caught and
+  retried instead of silently corrupting the database — this is what got the
+  extraction success rate to 99%.
 ## Output Files
 
 | File | Description |
@@ -174,3 +197,14 @@ The free Groq tier allows ~500,000 tokens/day (~357 issues). If you hit the limi
 - The script saves all completed extractions automatically
 - Re-run `python extract.py` the next day — it skips already-extracted issues
 - Alternatively, add a second Groq API key as `GROQ_API_KEY_2` in `.env`
+
+## Limitations & Future Work
+
+- Dedup is string-similarity based; embedding-based semantic dedup would catch
+  paraphrased duplicates ("auth bug" vs "login failure") that fuzzy matching misses
+- Pipeline is batch-only; incremental updates (process new issues without full
+  re-run) would make it usable as a live memory
+- Single-repo corpus; cross-repo entity resolution (same user across projects)
+  is an open problem
+- Conflict detection flags contradictions but doesn't auto-resolve them —
+  a resolution policy (recency wins, authority wins) is a natural next step
